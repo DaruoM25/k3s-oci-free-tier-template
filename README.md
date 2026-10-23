@@ -200,4 +200,8 @@ Ce template inclut deux workflows GitHub Actions dans `.github/workflows/` :
 
 ## 7. Licence
 
-Ce projet est distribué sous licence MIT. Vous êtes libre de l'utiliser, le modifier et le distribuer pour vos propres infrastructures.
+Ce projet est distribué sous **Licence d'Usage Personnel et Éducatif (Strictement Non-Commerciale)** :
+- ✅ **Autorisé :** Utilisation personnelle, apprentissage, formation, recherche académique, expérimentation et prototypage non commercial.
+- ❌ **Strictement Interdit :** Toute utilisation commerciale, exploitation lucrative, revente, hébergement géré payant (SaaS) ou intégration dans des environnements de production d'entreprise sans accord écrit préalable de l'auteur.
+
+Consultez le fichier [LICENSE](LICENSE) pour l'intégralité des termes et conditions.
