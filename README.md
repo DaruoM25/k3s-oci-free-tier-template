@@ -59,12 +59,26 @@ Avant de déployer, assurez-vous d'avoir installé sur votre poste :
 3. Initialisez Terraform et appliquez le provisionnement :
    ```bash
    terraform init
-   # Option A : Apply standard
    terraform apply
-   # Option B : Utiliser le script de sonde multi-AD anti-OutOfCapacity
-   ../scripts/provision_nodes.sh
    ```
    *Terraform génère automatiquement le fichier d'inventaire `ansible/inventory.ini` avec les adresses IP publiques et privées des instances.*
+
+### 💡 Contourner l'erreur "Out of Capacity" (Ressources indisponibles)
+
+Oracle Cloud limite l'allocation des instances Ampere A1 (Always Free) en fonction des capacités physiques disponibles dans votre région d'accueil. Il est très fréquent de rencontrer l'erreur `500 Internal Error - Out of host capacity` lors du `terraform apply`.
+
+Ce template inclut deux solutions pour automatiser les tentatives de création jusqu'à ce que des ressources se libèrent :
+
+**Option A : En local via le script de boucle (Recommandé)**
+Le script `scripts/provision_nodes.sh` encapsule Terraform et relance automatiquement le déploiement tant que l'erreur de capacité est détectée :
+```bash
+chmod +x scripts/provision_nodes.sh
+./scripts/provision_nodes.sh
+```
+*Le script sonde intelligemment les 3 domaines de disponibilité (`AD-1`, `AD-2`, `AD-3`), applique Terraform de façon ciblée dès qu'un créneau se libère et conserve les nœuds déjà créés grâce à la directive `lifecycle { ignore_changes = [availability_domain] }`.*
+
+**Option B : En tâche de fond via GitHub Actions (Mode autonome 24/7)**
+Si vous préférez ne pas laisser votre poste allumé, le workflow préconfiguré `.github/workflows/deploy.yml` s'exécute automatiquement toutes les heures via un cron GitHub Actions (`0 * * * *`). Dès qu'Oracle libère du stock, le workflow alloue les instances manquantes, exécute le playbook Ansible et téléverse vos artefacts (`k3s-kubeconfig.yaml`).
 
 ---
 
