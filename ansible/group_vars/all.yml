@@ -1,0 +1,22 @@
+---
+# Paramètres globaux du cluster K3s et services associés
+k3s_version: "v1.30.2+k3s1"
+k3s_cluster_cidr: "10.42.0.0/16"
+k3s_service_cidr: "10.43.0.0/16"
+
+# Versions des outils tiers
+node_exporter_version: "1.8.1"
+node_exporter_port: 9100
+
+# Paramètres Caddy Ingress (Multi-Tenant & Multi-Domaines)
+caddy_admin_email: "devops@example.com"
+caddy_http_port: 80
+caddy_https_port: 443
+
+caddy_vhosts:
+  - name: "demo-app"
+    # Domaines ou écoute directe (ajouter FQDN ex: your-app.example.com pour SSL automatique)
+    domains:
+      - "your-app.duckdns.org"
+    upstream: "127.0.0.1:30080"
+    enable_healthz: true

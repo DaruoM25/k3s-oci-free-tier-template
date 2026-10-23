@@ -1,0 +1,9 @@
+# Fichier d'initialisation du backend S3 / OCI Object Storage
+# Utilisation : terraform init -backend-config=backend.hcl
+
+bucket   = "terraform-states"
+key      = "k3s-oci-cluster/terraform.tfstate"
+region   = "eu-frankfurt-1"
+# Remplacez <NAMESPACE_OCI> par le namespace de votre Tenancy OCI
+# Obtenable via: oci os ns get --query "data" --raw-output
+endpoint = "https://<NAMESPACE_OCI>.compat.objectstorage.eu-frankfurt-1.oraclecloud.com"

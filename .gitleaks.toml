@@ -1,0 +1,15 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist pour les templates, exemples et placeholders d'infrastructure"
+paths = [
+  '''terraform/terraform\.tfvars\.example''',
+  '''terraform/variables\.tf''',
+  '''k8s/apps/demo-app/05-db-secret\.yaml''',
+  '''README\.md'''
+]
+regexes = [
+  '''CHANGE_ME_.*''',
+  '''ocid1\.tenancy\.oc1\.\.example'''
+]

@@ -1,0 +1,73 @@
+---
+# ==============================================================================
+# Rôle K3s Master : Installation du serveur K3s sans Traefik
+# ==============================================================================
+
+- name: Autoriser les ports K3s API (6443), HTTP (80) et HTTPS (443) dans iptables
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+  loop:
+    - "6443"
+    - "80"
+    - "443"
+
+- name: Sauvegarder les règles iptables du master
+  ansible.builtin.command: netfilter-persistent save
+  changed_when: false
+
+- name: Vérifier si K3s est déjà installé sur le Master
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Télécharger et installer K3s Server
+  when: not k3s_binary.stat.exists
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    INSTALL_K3S_EXEC="server --disable traefik --flannel-backend=vxlan --node-name={{ inventory_hostname }} --node-ip={{ private_ip }} --advertise-address={{ private_ip }} --tls-san={{ ansible_host }} --tls-san={{ private_ip }} --cluster-cidr={{ k3s_cluster_cidr }} --service-cidr={{ k3s_service_cidr }} --write-kubeconfig-mode=0644" \
+    sh -
+  changed_when: true
+
+- name: S'assurer que le service k3s est démarré et activé
+  ansible.builtin.systemd:
+    name: k3s
+    state: started
+    enabled: true
+
+- name: Attendre que le token de nœud K3s soit généré
+  ansible.builtin.wait_for:
+    path: /var/lib/rancher/k3s/server/node-token
+    state: present
+    timeout: 60
+
+- name: Récupérer le token de cluster K3s
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: node_token_b64
+
+- name: Définir le token de cluster en variable fact pour les workers
+  ansible.builtin.set_fact:
+    k3s_node_token: "{{ (node_token_b64['content'] | b64decode) | trim }}"
+    cacheable: true
+
+- name: Récupérer le fichier kubeconfig
+  ansible.builtin.slurp:
+    src: /etc/rancher/k3s/k3s.yaml
+  register: kubeconfig_b64
+
+- name: Enregistrer localement le fichier kubeconfig configuré avec l'IP publique
+  ansible.builtin.copy:
+    content: "{{ (kubeconfig_b64['content'] | b64decode) | replace('127.0.0.1', ansible_host) }}"
+    dest: "{{ playbook_dir }}/k3s-kubeconfig.yaml"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+
+- name: Attendre que le nœud Master soit dans l'état Ready
+  ansible.builtin.command: /usr/local/bin/k3s kubectl wait --for=condition=Ready nodes --all --timeout=180s
+  changed_when: false

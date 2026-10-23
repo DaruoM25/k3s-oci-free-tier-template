@@ -1,0 +1,39 @@
+---
+# ==============================================================================
+# Playbook Principal d'Orchestration K3s sur OCI Always Free
+# ==============================================================================
+
+# 1. Préparation du système d'exploitation et tuning réseau sur tous les nœuds
+- name: "Phase 1 - Configuration commune OS & Réseau"
+  hosts: k3s_cluster
+  gather_facts: true
+  roles:
+    - role: common
+
+# 2. Déploiement du Control Plane K3s (Master)
+- name: "Phase 2 - Installation K3s Server sur le Master"
+  hosts: k3s_master
+  gather_facts: true
+  roles:
+    - role: k3s_master
+
+# 3. Adhésion des 3 nœuds Workers au Master
+- name: "Phase 3 - Adhésion des Workers au Cluster K3s"
+  hosts: k3s_workers
+  gather_facts: true
+  roles:
+    - role: k3s_worker
+
+# 4. Déploiement de l'Ingress Caddy natif sur l'hôte (Master)
+- name: "Phase 4 - Configuration Caddy Ingress (80/443)"
+  hosts: k3s_master
+  gather_facts: true
+  roles:
+    - role: caddy_ingress
+
+# 5. Déploiement de la stack de métriques et monitoring
+- name: "Phase 5 - Déploiement Node Exporter & Prometheus"
+  hosts: k3s_cluster
+  gather_facts: true
+  roles:
+    - role: monitoring

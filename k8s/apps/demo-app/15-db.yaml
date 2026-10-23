@@ -1,0 +1,132 @@
+---
+# 1. Volume persistant pour PostgreSQL (Local-Path K3s)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: demo-app-db-pvc
+  namespace: demo-app
+  labels:
+    app.kubernetes.io/name: demo-app-db
+    app.kubernetes.io/part-of: demo-app-suite
+    environment: production
+    managed-by: gitops
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# 2. Déploiement du serveur PostgreSQL (linux/arm64 & amd64)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-db
+  namespace: demo-app
+  labels:
+    app.kubernetes.io/name: demo-app-db
+    app.kubernetes.io/instance: demo-app-db-prod
+    app.kubernetes.io/version: "16-alpine"
+    app.kubernetes.io/component: database-backend
+    app.kubernetes.io/part-of: demo-app-suite
+    environment: production
+    managed-by: gitops
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-app-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-app-db
+        app.kubernetes.io/instance: demo-app-db-prod
+        environment: production
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: demo-app-db-secret
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: demo-app-db-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: demo-app-db-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1 -p 5432
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1 -p 5432
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: demo-app-db-pvc
+
+---
+# 3. Service ClusterIP interne pour accès base de données
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-db-svc
+  namespace: demo-app
+  labels:
+    app.kubernetes.io/name: demo-app-db
+    app.kubernetes.io/component: database-service
+    app.kubernetes.io/part-of: demo-app-suite
+    environment: production
+    managed-by: gitops
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: demo-app-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP

@@ -1,0 +1,44 @@
+# Fichiers de secrets et credentials
+*.pem
+*.key
+*.pub
+*.id_rsa
+id_rsa*
+*.env
+*.env.*
+!*.env.example
+
+# Kubernetes & Artefacts CI
+*kubeconfig*.yaml
+*kubeconfig*.yml
+artifacts/
+/tmp/k3s_artifacts/
+
+# Terraform local state et variables
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+!terraform.tfvars.example
+backend.hcl
+!backend.hcl.example
+
+# Ansible
+ansible/inventory.ini
+ansible/k3s-kubeconfig.yaml
+ansible/*.retry
+.ansible/
+
+# Logs et fichiers temporaires
+*.log
+inventory.ini
+crash.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Local bundles & CI download artifacts
+bundle.py
+create_free_infra_cloud_oracle.md

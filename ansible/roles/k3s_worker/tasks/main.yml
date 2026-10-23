@@ -1,0 +1,35 @@
+---
+# ==============================================================================
+# Rôle K3s Worker : Adhésion de l'agent K3s au cluster
+# ==============================================================================
+
+- name: Vérifier l'accessibilité du Master K3s sur le port 6443
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[groups['k3s_master'][0]]['private_ip'] }}"
+    port: 6443
+    timeout: 30
+
+- name: Télécharger et installer K3s Agent
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    K3S_URL="https://{{ hostvars[groups['k3s_master'][0]]['private_ip'] }}:6443" \
+    K3S_TOKEN="{{ hostvars[groups['k3s_master'][0]]['k3s_node_token'] }}" \
+    INSTALL_K3S_EXEC="agent --node-name={{ inventory_hostname }} --node-ip={{ private_ip }} --flannel-iface={{ ansible_default_ipv4.interface }}" \
+    sh -
+  changed_when: true
+
+- name: S'assurer que le service k3s-agent est redémarré et activé
+  ansible.builtin.systemd:
+    name: k3s-agent
+    state: restarted
+    enabled: true
+    daemon_reload: true
+
+- name: Vérifier la présence du nœud worker dans le cluster depuis le master
+  ansible.builtin.command: "/usr/local/bin/k3s kubectl get node {{ inventory_hostname }}"
+  delegate_to: "{{ groups['k3s_master'][0] }}"
+  register: worker_status
+  until: '" Ready" in worker_status.stdout'
+  retries: 24
+  delay: 5
+  changed_when: false

@@ -1,0 +1,31 @@
+# ==============================================================================
+# Configuration Caddyfile pour Ingress K3s (Routage Multi-Domaines Dynamique)
+# Écoute directement sur l'hôte
+# ==============================================================================
+
+{
+    email {{ caddy_admin_email | default('devops@example.com') }}
+    admin 127.0.0.1:2019
+}
+
+{% for vhost in caddy_vhosts %}
+# ------------------------------------------------------------------------------
+# VHost : {{ vhost.name }}
+# ------------------------------------------------------------------------------
+{{ vhost.domains | join(', ') }} {
+{% if vhost.enable_healthz | default(false) %}
+    handle /healthz {
+        respond "OK - Caddy Ingress Running on OCI Ampere A1 ({{ vhost.name }})" 200
+    }
+{% endif %}
+
+    handle {
+        reverse_proxy {{ vhost.upstream }} {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+}
+{% endfor %}

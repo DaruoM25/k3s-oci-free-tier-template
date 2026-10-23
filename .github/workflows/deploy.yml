@@ -1,0 +1,151 @@
+name: "OCI K3s Provisioning & Deployment"
+
+on:
+  schedule:
+    # Exécution périodique toutes les heures pour chasser les capacités Ampere A1 libérées
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_ansible:
+        description: 'Forcer l exécution d Ansible même si aucun nouveau nœud n a été créé'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: oci-k3s-cluster
+  cancel-in-progress: false
+
+jobs:
+  provision-and-deploy:
+    name: "Provision OCI Nodes & Configure K3s"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.OCI_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.OCI_S3_SECRET_ACCESS_KEY }}
+      OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+      OCI_REGION: ${{ secrets.OCI_REGION || 'eu-frankfurt-1' }}
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.5"
+          terraform_wrapper: false
+
+      - name: "Setup Python & Ansible"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: "Install Ansible & OCI CLI"
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible oci-cli
+          ansible --version
+          oci --version
+
+      - name: "Configure OCI API Credentials"
+        env:
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
+        run: |
+          mkdir -p ~/.oci
+          cat <<EOF > ~/.oci/config
+          [DEFAULT]
+          user=${OCI_USER_OCID}
+          fingerprint=${OCI_FINGERPRINT}
+          tenancy=${OCI_TENANCY_OCID}
+          region=${OCI_REGION}
+          key_file=~/.oci/oci_api_key.pem
+          EOF
+
+          echo "${OCI_KEY_CONTENT}" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/config
+
+      - name: "Configure SSH Keys for Cluster Nodes"
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          echo "${SSH_PUBLIC_KEY}" > ~/.ssh/id_rsa.pub
+          chmod 600 ~/.ssh/id_rsa
+          chmod 644 ~/.ssh/id_rsa.pub
+
+      - name: "Initialize Terraform with OCI Object Storage S3 Backend"
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=terraform-states" \
+            -backend-config="key=k3s-oci-cluster/terraform.tfstate" \
+            -backend-config="region=${OCI_REGION}" \
+            -backend-config="endpoint=https://${OCI_NAMESPACE}.compat.objectstorage.${OCI_REGION}.oraclecloud.com"
+
+      - name: "Execute Provisioning Script (Phase 1 & Phase 2 Multi-AD Probe)"
+        id: provision
+        run: |
+          chmod +x ./scripts/provision_nodes.sh
+          # Exécute le script avec un code de sortie capturé
+          set +e
+          ./scripts/provision_nodes.sh
+          EXIT_CODE=$?
+          set -e
+          echo "PROVISION_STATUS=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          
+          # Si le code est 2, certains nœuds manquent encore de capacité (normal en Always Free)
+          if [ ${EXIT_CODE} -eq 2 ]; then
+            echo "::warning ::Capacité partielle obtenue. La prochaine exécution planifiée tentera d allouer les nœuds restants."
+          elif [ ${EXIT_CODE} -ne 0 ]; then
+            echo "::error ::Erreur lors du provisionnement Terraform."
+            exit ${EXIT_CODE}
+          fi
+
+      - name: "Wait for SSH Connectivity on All Nodes"
+        if: steps.provision.outputs.PROVISION_STATUS == '0' || github.event.inputs.force_ansible == 'true'
+        run: |
+          if [ ! -f ansible/inventory.ini ]; then
+            echo "Aucun inventaire Ansible trouvé."
+            exit 1
+          fi
+          
+          echo "Test de la connectivité SSH vers les nœuds..."
+          IPS=$(grep -oE 'ansible_host=[0-9.]+' ansible/inventory.ini | cut -d= -f2)
+          for ip in $IPS; do
+            echo "Attente de l ouverture du port SSH sur $ip..."
+            for i in {1..30}; do
+              if nc -z -w 3 "$ip" 22; then
+                echo "SSH disponible sur $ip."
+                break
+              fi
+              echo "En attente de $ip ($i/30)..."
+              sleep 10
+            done
+          done
+
+      - name: "Run Ansible Playbook (Cluster Configuration)"
+        if: steps.provision.outputs.PROVISION_STATUS == '0' || github.event.inputs.force_ansible == 'true'
+        working-directory: ./ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook -i inventory.ini site.yml
+
+      - name: "Upload Kubeconfig & Artifacts"
+        if: steps.provision.outputs.PROVISION_STATUS == '0' || github.event.inputs.force_ansible == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: k3s-cluster-artifacts
+          path: |
+            ansible/inventory.ini
+            ansible/k3s-kubeconfig.yaml
+          retention-days: 14

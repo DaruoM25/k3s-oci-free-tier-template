@@ -1,0 +1,80 @@
+---
+# ==============================================================================
+# Rôle Common : Préparation du système Ubuntu 24.04 ARM sur OCI
+# ==============================================================================
+
+- name: Désactiver le swap immédiatement
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+
+- name: Désactiver le swap de manière persistante dans /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s+.*)$'
+    replace: '# \1'
+
+- name: Charger les modules noyau nécessaires à K3s et Flannel
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Rendre le chargement des modules persistant au démarrage
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k3s.conf
+    content: |
+      overlay
+      br_netfilter
+    mode: '0644'
+
+- name: Configurer les paramètres sysctl requis pour Kubernetes
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop:
+    - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+    - { key: 'net.ipv4.ip_forward', value: '1' }
+    - { key: 'net.ipv6.conf.all.forwarding', value: '1' }
+
+- name: Installer les paquets de base essentiels
+  ansible.builtin.apt:
+    name:
+      - curl
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - software-properties-common
+      - jq
+      - tar
+      - open-iscsi
+      - iptables-persistent
+      - netfilter-persistent
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Sur les images Ubuntu officielles d'Oracle Cloud, les règles iptables par défaut
+# contiennent des REJECT sur les chaînes INPUT et FORWARD qui bloquent le trafic
+# inter-nœuds Flannel (VXLAN) ainsi que les communications Pod-to-Pod.
+- name: Corriger la politique iptables FORWARD pour autoriser le trafic K8s / VXLAN
+  ansible.builtin.iptables:
+    chain: FORWARD
+    policy: ACCEPT
+
+- name: Autoriser tout le trafic provenant du VCN (10.0.0.0/16) dans iptables
+  ansible.builtin.iptables:
+    chain: INPUT
+    source: "10.0.0.0/16"
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+
+- name: Sauvegarder les règles iptables persistantes
+  ansible.builtin.command: netfilter-persistent save
+  changed_when: false

@@ -1,0 +1,136 @@
+# ==============================================================================
+# MODÈLE DE RÉFÉRENCE APPLICATIF (K3S MULTI-TENANT OCI ALWAYS FREE)
+# ==============================================================================
+# 
+# Conventions de ports NodePort recommandées :
+# - 30080 : Demo App Web (App principale)
+# - 30081 : Application secondaire A (ex: API / Microservice)
+# - 30082 : Application secondaire B (ex: Dashboard Analytics)
+# - 30083..30099 : Applications futures
+#
+# Intégration Caddy Ingress :
+# Pour exposer une nouvelle application, ajouter son entrée dans `ansible/group_vars/all.yml` :
+# ```yaml
+# caddy_vhosts:
+#   - name: "ma-nouvelle-app"
+#     domains:
+#       - "app.mondomaine.com"
+#     upstream: "127.0.0.1:30081"
+#     enable_healthz: true
+# ```
+# ==============================================================================
+
+---
+# 1. Namespace dédié pour isolation multi-tenant
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app-name-placeholder
+  labels:
+    app.kubernetes.io/name: app-name-placeholder
+    app.kubernetes.io/part-of: app-suite-placeholder
+    environment: production
+    managed-by: gitops
+
+---
+# 2. ResourceQuota pour préserver les quotas OCI Always Free (Total: 4 OCPUs / 24 Go RAM)
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: app-quota
+  namespace: app-name-placeholder
+spec:
+  hard:
+    requests.cpu: "500m"
+    requests.memory: "512Mi"
+    limits.cpu: "1"
+    limits.memory: "1Gi"
+    pods: "6"
+
+---
+# 3. Déploiement haute-disponibilité
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-name-placeholder
+  namespace: app-name-placeholder
+  labels:
+    app.kubernetes.io/name: app-name-placeholder
+    app.kubernetes.io/component: web-service
+    environment: production
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: app-name-placeholder
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: app-name-placeholder
+        environment: production
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/your-username/app-name-placeholder:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL
+
+---
+# 4. Service NodePort exposé localement vers Caddy
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-name-placeholder
+  namespace: app-name-placeholder
+  labels:
+    app.kubernetes.io/name: app-name-placeholder
+    environment: production
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: app-name-placeholder
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30081 # Port d'écoute hôte routé par Caddy
+      protocol: TCP

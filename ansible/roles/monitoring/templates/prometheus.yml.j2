@@ -1,0 +1,30 @@
+# ==============================================================================
+# Configuration Prometheus pour le Cluster K3s OCI
+# ==============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "k3s_nodes"
+    static_configs:
+      - targets:
+{% for host in groups['k3s_cluster'] %}
+          - "{{ hostvars[host]['private_ip'] }}:{{ node_exporter_port }}"
+{% endfor %}
+        labels:
+          cluster: "k3s-oci-alwaysfree"
+          environment: "production"
+
+  - job_name: "k3s_apiserver"
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
+    bearer_token_file: /var/lib/rancher/k3s/server/node-token
+    static_configs:
+      - targets: ["{{ hostvars[groups['k3s_master'][0]]['private_ip'] }}:6443"]

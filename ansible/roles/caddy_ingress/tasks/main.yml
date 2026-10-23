@@ -1,0 +1,46 @@
+---
+# ==============================================================================
+# Rôle Caddy Ingress : Installation de Caddy natif écoutant sur 80/443
+# ==============================================================================
+
+- name: Installer les paquets prérequis pour le dépôt Caddy
+  ansible.builtin.apt:
+    name:
+      - debian-keyring
+      - debian-archive-keyring
+      - apt-transport-https
+      - curl
+    state: present
+
+- name: Télécharger et installer la clé GPG officielle de Caddy
+  ansible.builtin.get_url:
+    url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+    dest: /usr/share/keyrings/caddy-stable-archive-keyring.asc
+    mode: '0644'
+
+- name: Ajouter le dépôt APT officiel de Caddy
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main"
+    state: present
+    filename: caddy-stable
+    update_cache: true
+
+- name: Installer le paquet Caddy
+  ansible.builtin.apt:
+    name: caddy
+    state: present
+
+- name: Déployer la configuration Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: caddy
+    group: caddy
+    mode: '0644'
+  notify: Recharger Caddy
+
+- name: S'assurer que le service Caddy est démarré et activé au boot
+  ansible.builtin.systemd:
+    name: caddy
+    state: started
+    enabled: true

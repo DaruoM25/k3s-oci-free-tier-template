@@ -1,0 +1,13 @@
+# Exemple de variables locales pour Terraform
+tenancy_ocid     = "ocid1.tenancy.oc1..example"
+compartment_ocid = "ocid1.tenancy.oc1..example"
+region           = "eu-frankfurt-1"
+
+# Identifiants API OCI (si exécuté en local hors GitHub Actions)
+user_ocid        = "ocid1.user.oc1..example"
+fingerprint      = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+private_key_path = "~/.oci/oci_api_key.pem"
+
+# Clé SSH publique pour l'accès aux VM
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+# ssh_public_key    = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@machine"
