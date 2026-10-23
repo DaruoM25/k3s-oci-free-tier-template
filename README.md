@@ -200,8 +200,7 @@ Ce template inclut deux workflows GitHub Actions dans `.github/workflows/` :
 
 ## 7. Licence
 
-Ce projet est distribué sous **Licence d'Usage Personnel et Éducatif (Strictement Non-Commerciale)** :
-- ✅ **Autorisé :** Utilisation personnelle, apprentissage, formation, recherche académique, expérimentation et prototypage non commercial.
-- ❌ **Strictement Interdit :** Toute utilisation commerciale, exploitation lucrative, revente, hébergement géré payant (SaaS) ou intégration dans des environnements de production d'entreprise sans accord écrit préalable de l'auteur.
+Ce projet est distribué sous licence **Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0)**.
 
-Consultez le fichier [LICENSE](LICENSE) pour l'intégralité des termes et conditions.
+✅ **Autorisé :** Utilisation pour l'apprentissage, les projets personnels, les laboratoires de test et l'auto-hébergement non lucratif.  
+❌ **Interdit :** Toute utilisation à des fins commerciales, intégration dans un produit payant, ou utilisation de ce modèle pour facturer des prestations de déploiement à des clients.
